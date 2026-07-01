@@ -135,8 +135,21 @@ Override the config file location with `CLOUDPULSE_CONFIG=/path/to/config.yaml`.
 
 ```bash
 curl http://localhost:8080/api/metrics
-# {"timestamp": "...", "cpu_utilization_percent": 42.1, "memory_utilization_percent": 55.3, "latency_ms": 210.4, "source": "mock"}
+```
 
+Sample response:
+
+```json
+{
+  "timestamp": "2026-07-01T11:47:58.812444+00:00",
+  "cpu_utilization_percent": 42.1,
+  "memory_utilization_percent": 55.3,
+  "latency_ms": 210.4,
+  "source": "mock"
+}
+```
+
+```bash
 curl http://localhost:8080/api/alerts
 # [{"timestamp": "...", "metric": "cpu_utilization_percent", "value": 91.2, "threshold": 80, "message": "..."}]
 ```
