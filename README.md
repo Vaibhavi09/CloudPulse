@@ -98,6 +98,9 @@ occasionally breach the configured thresholds to demonstrate alerting.
    ```bash
    gcloud auth application-default login
    ```
+   If you're using a service account key instead, export
+   `GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json` before starting the
+   app so the GCP SDK can find it.
 4. Run the app - it detects real credentials automatically and switches out of mock mode:
    ```bash
    python3 main.py
