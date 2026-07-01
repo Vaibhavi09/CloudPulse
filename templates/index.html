@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CloudPulse - Infrastructure Monitor</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --border: #334155;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --ok: #22c55e;
+            --warn: #ef4444;
+            --accent: #38bdf8;
+        }
+        * { box-sizing: border-box; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            margin: 0;
+            padding: 32px;
+        }
+        h1 { margin: 0 0 4px; font-size: 1.6rem; }
+        .subtitle { color: var(--muted); margin-bottom: 24px; }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .badge.mock { background: #78350f; color: #fde68a; }
+        .badge.live { background: #14532d; color: #bbf7d0; }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .card .label { color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
+        .card .value { font-size: 2rem; font-weight: 700; }
+        .card .threshold { color: var(--muted); font-size: 0.8rem; margin-top: 6px; }
+        .card.breached { border-color: var(--warn); }
+        .card.breached .value { color: var(--warn); }
+        .card.healthy .value { color: var(--ok); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+        th { color: var(--muted); font-weight: 600; }
+        section { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+        section h2 { margin-top: 0; font-size: 1.1rem; }
+        .empty { color: var(--muted); font-style: italic; }
+        .timestamp { color: var(--muted); font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+    <h1>CloudPulse
+        {% if mock_mode %}
+            <span class="badge mock">MOCK MODE</span>
+        {% else %}
+            <span class="badge live">LIVE - GCP</span>
+        {% endif %}
+    </h1>
+    <p class="subtitle">
+        GCP infrastructure monitor with anomaly alerting.
+        {% if mock_mode %}Generating synthetic metrics - set a real gcp.project_id in config.yaml to poll live data.{% endif %}
+    </p>
+
+    <div class="cards" id="metric-cards">
+        <div class="card {{ 'breached' if metrics and metrics.cpu_utilization_percent > thresholds.cpu_utilization_percent else 'healthy' }}" data-metric="cpu_utilization_percent">
+            <div class="label">CPU Utilization</div>
+            <div class="value">{{ "%.1f"|format(metrics.cpu_utilization_percent) if metrics else "-" }}<span style="font-size:1rem;">%</span></div>
+            <div class="threshold">Threshold: {{ thresholds.cpu_utilization_percent }}%</div>
+        </div>
+        <div class="card {{ 'breached' if metrics and metrics.memory_utilization_percent > thresholds.memory_utilization_percent else 'healthy' }}" data-metric="memory_utilization_percent">
+            <div class="label">Memory Utilization</div>
+            <div class="value">{{ "%.1f"|format(metrics.memory_utilization_percent) if metrics else "-" }}<span style="font-size:1rem;">%</span></div>
+            <div class="threshold">Threshold: {{ thresholds.memory_utilization_percent }}%</div>
+        </div>
+        <div class="card {{ 'breached' if metrics and metrics.latency_ms > thresholds.latency_ms else 'healthy' }}" data-metric="latency_ms">
+            <div class="label">Latency</div>
+            <div class="value">{{ "%.0f"|format(metrics.latency_ms) if metrics else "-" }}<span style="font-size:1rem;"> ms</span></div>
+            <div class="threshold">Threshold: {{ thresholds.latency_ms }} ms</div>
+        </div>
+    </div>
+
+    <p class="timestamp" id="last-updated">
+        {% if metrics %}Last updated: {{ metrics.timestamp }}{% endif %}
+    </p>
+
+    <section>
+        <h2>Alert History</h2>
+        <table id="alert-table">
+            <thead>
+                <tr><th>Time</th><th>Metric</th><th>Value</th><th>Threshold</th><th>Message</th></tr>
+            </thead>
+            <tbody>
+                {% for alert in alerts %}
+                <tr>
+                    <td>{{ alert.timestamp }}</td>
+                    <td>{{ alert.metric }}</td>
+                    <td>{{ alert.value }}</td>
+                    <td>{{ alert.threshold }}</td>
+                    <td>{{ alert.message }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if not alerts %}<p class="empty" id="no-alerts">No alerts yet - metrics are within thresholds.</p>{% endif %}
+    </section>
+
+    <script>
+        // Polls the JSON API so the dashboard stays live without a full reload.
+        const thresholds = {{ thresholds | tojson }};
+        const refreshMs = {{ refresh_seconds * 1000 }};
+
+        function applyMetricCard(key, value, unit, decimals) {
+            const card = document.querySelector(`.card[data-metric="${key}"]`);
+            if (!card) return;
+            const valueEl = card.querySelector(".value");
+            valueEl.innerHTML = `${value.toFixed(decimals)}<span style="font-size:1rem;">${unit}</span>`;
+            const breached = value > thresholds[key];
+            card.classList.toggle("breached", breached);
+            card.classList.toggle("healthy", !breached);
+        }
+
+        async function refreshMetrics() {
+            try {
+                const res = await fetch("/api/metrics");
+                const metrics = await res.json();
+                if (!metrics.timestamp) return;
+                applyMetricCard("cpu_utilization_percent", metrics.cpu_utilization_percent, "%", 1);
+                applyMetricCard("memory_utilization_percent", metrics.memory_utilization_percent, "%", 1);
+                applyMetricCard("latency_ms", metrics.latency_ms, " ms", 0);
+                document.getElementById("last-updated").textContent = `Last updated: ${metrics.timestamp}`;
+            } catch (e) {
+                console.error("Failed to refresh metrics", e);
+            }
+        }
+
+        async function refreshAlerts() {
+            try {
+                const res = await fetch("/api/alerts");
+                const alerts = await res.json();
+                const tbody = document.querySelector("#alert-table tbody");
+                tbody.innerHTML = alerts.map(a => `
+                    <tr>
+                        <td>${a.timestamp}</td>
+                        <td>${a.metric}</td>
+                        <td>${a.value}</td>
+                        <td>${a.threshold}</td>
+                        <td>${a.message}</td>
+                    </tr>
+                `).join("");
+                const noAlerts = document.getElementById("no-alerts");
+                if (noAlerts) noAlerts.style.display = alerts.length ? "none" : "block";
+            } catch (e) {
+                console.error("Failed to refresh alerts", e);
+            }
+        }
+
+        setInterval(() => { refreshMetrics(); refreshAlerts(); }, refreshMs);
+    </script>
+</body>
+</html>

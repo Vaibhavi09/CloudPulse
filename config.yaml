@@ -1,0 +1,24 @@
+# CloudPulse configuration.
+#
+# Nothing here is a secret - GCP credentials are picked up from the
+# environment (GOOGLE_APPLICATION_CREDENTIALS) or Application Default
+# Credentials, never from this file.
+
+gcp:
+  # Your GCP project id. Leave as-is (or unset) to run entirely in mock mode.
+  project_id: "your-gcp-project-id"
+  # Pub/Sub topic that alert events are published to.
+  pubsub_topic: "cloudpulse-alerts"
+
+polling:
+  # How often to poll Cloud Monitoring (or generate mock metrics), in seconds.
+  interval_seconds: 15
+
+thresholds:
+  cpu_utilization_percent: 80
+  memory_utilization_percent: 85
+  latency_ms: 500
+
+alerts:
+  # Number of most recent alerts kept in memory for the dashboard/API.
+  history_size: 100
